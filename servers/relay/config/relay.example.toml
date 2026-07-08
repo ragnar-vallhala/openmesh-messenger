@@ -1,0 +1,19 @@
+# Example configuration for an optional relay server.
+# Copy to relay.toml and adjust.
+
+[server]
+bind_address = "0.0.0.0"
+bind_port    = 4444
+
+[routing]
+# Seconds a temporary route is kept without traffic before being dropped.
+route_ttl_seconds = 60
+# Maximum simultaneous relayed sessions.
+max_sessions = 10000
+
+[limits]
+# Cap forwarded throughput per session (bytes/sec); 0 = unlimited.
+max_bytes_per_second = 0
+
+[log]
+level = "info"

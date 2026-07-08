@@ -1,0 +1,55 @@
+# Build output
+/build/
+/build-*/
+/cmake-build-*/
+out/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+compile_commands.json
+Testing/
+
+# Qt
+*.qmlc
+*.jsc
+*.moc
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+.qmake.stash
+*.qmake.cache
+*_qmlcache.qrc
+android-build/
+*.apk
+*.aab
+*.keystore
+
+# IDEs / editors
+.idea/
+.vscode/
+*.user
+*.autosave
+.cache/
+.clangd/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local secrets / generated identities — never commit private keys
+*.key
+*.pem
+identity_*.json
+/scripts/local/

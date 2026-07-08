@@ -1,0 +1,13 @@
+                    OpenMesh Messenger — License
+
+OpenMesh Messenger is intended to be Open Protocol / open source software
+(SRS §3 "Open Protocol").
+
+TODO: Choose and insert a license before the first public release.
+Suggested candidates for a decentralized, privacy-first project:
+
+  * Apache License 2.0        (permissive, patent grant)
+  * Mozilla Public License 2.0 (weak copyleft, file-level)
+  * GNU GPL v3 / AGPL v3      (strong copyleft; AGPL covers network use)
+
+Until a license is chosen, all rights are reserved by the authors.

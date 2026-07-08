@@ -1,0 +1,20 @@
+# Example configuration for a volunteer signaling server.
+# Copy to signaling.toml and adjust. Do NOT commit real deployment secrets.
+
+[server]
+# UDP address/port the signaling server listens on.
+bind_address = "0.0.0.0"
+bind_port    = 4433
+
+[registry]
+# Seconds of inactivity before a peer is forgotten (SRS §11).
+peer_ttl_seconds = 120
+# How often to sweep for expired peers.
+sweep_interval_seconds = 30
+
+[limits]
+# Basic abuse protection (SRS §7). Per-source request budget.
+max_requests_per_minute = 600
+
+[log]
+level = "info"   # trace | debug | info | warn | error
