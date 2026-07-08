@@ -15,6 +15,10 @@ std::optional<net::Endpoint> PeerRegistry::lookup(const std::string& fingerprint
     return it->second.endpoint;
 }
 
+bool PeerRegistry::remove(const std::string& fingerprint) {
+    return peers_.erase(fingerprint) > 0;
+}
+
 void PeerRegistry::expire(std::int64_t cutoff_seconds) {
     for (auto it = peers_.begin(); it != peers_.end();) {
         if (it->second.last_seen < cutoff_seconds) {

@@ -18,11 +18,27 @@ The server shall **never**:
 - Store conversations or read messages (it only sees the packet envelope).
 - Possess private keys or decrypt traffic (SRS FR-6).
 
+## Status
+
+The **UDP packet loop is implemented** (`SignalingServer`): it binds a socket,
+receives datagrams, and handles `REGISTER` (with the proof-of-ownership
+challenge-response), `DISCOVER`, `CONNECT` relay, `HEARTBEAT`, and `DISCONNECT`
+against the `PeerRegistry`, with peer/challenge expiry. See the
+[signaling sub-protocol spec](../../docs/protocol/signaling.md).
+
+The protocol logic (`handle()`) is separated from I/O so it is unit-tested
+without sockets; there is also a live loopback-socket handshake test.
+
+Still to come: TOML config parsing, structured metrics/logging, and abuse
+throttling (SRS §7).
+
 ## Run
 
 ```sh
-openmesh-signaling --config servers/signaling/config/signaling.example.toml
+# bind_host defaults to 0.0.0.0, bind_port to 4433
+openmesh-signaling 0.0.0.0 4433
 ```
 
-Configuration lives in [`config/`](config/). Links against the shared `protocol`
-and `crypto` libraries so it speaks the exact same wire format as clients.
+Example configuration lives in [`config/`](config/) (not yet parsed — args are
+positional for now). Links against the shared `protocol`, `net` and `crypto`
+libraries so it speaks the exact same wire format as clients.

@@ -18,6 +18,9 @@ public:
 
     [[nodiscard]] std::optional<net::Endpoint> lookup(const std::string& fingerprint) const;
 
+    // Remove a specific peer (e.g. on DISCONNECT). Returns true if one was removed.
+    bool remove(const std::string& fingerprint);
+
     // Remove peers not seen since `cutoff_seconds`.
     void expire(std::int64_t cutoff_seconds);
 
