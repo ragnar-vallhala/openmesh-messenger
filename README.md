@@ -39,7 +39,8 @@ openmesh-messenger/
 │   ├── signaling/         # Volunteer signaling server (peer registry, discovery)
 │   └── relay/             # Optional relay server (forwards encrypted packets)
 │
-├── tools/                 # Developer/CLI tools (keygen, network simulator)
+├── cli/                   # om-chat — command-line client (register, discover, chat)
+├── tools/                 # Developer/CLI tools (keygen, network simulator, demos)
 ├── scripts/               # Build, format and CI helper scripts
 └── third_party/           # Vendored dependencies (git submodules or copies)
 ```
