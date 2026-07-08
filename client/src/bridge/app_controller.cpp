@@ -1,19 +1,24 @@
 #include "bridge/app_controller.hpp"
 
-#include <string>
-#include <vector>
+#include "openmesh/core/hex.hpp"
 
-AppController::AppController(QObject* parent) : QObject(parent) {
+AppController::AppController(QObject* parent)
+    : QObject(parent), identity_(openmesh::crypto::generate_identity()),
+      engine_(identity_.public_key, identity_.secret_key) {
     engine_.on_message([this](const openmesh::messaging::Message& m) {
-        emit messageReceived(QString::fromUtf8(reinterpret_cast<const char*>(m.peer.data()),
-                                               static_cast<int>(m.peer.size())),
-                             QString::fromStdString(m.text), m.outgoing);
+        emit messageReceived(QString::fromStdString(openmesh::core::to_hex(m.peer)),
+                             QString::fromUtf8(reinterpret_cast<const char*>(m.plaintext.data()),
+                                               static_cast<int>(m.plaintext.size())),
+                             m.outgoing);
     });
 }
 
+QString AppController::fingerprint() const {
+    return QString::fromStdString(identity_.fingerprint());
+}
+
 void AppController::sendText(const QString& peerFingerprint, const QString& text) {
-    // Placeholder: treat the fingerprint string bytes as the peer key for now.
-    const std::string fp = peerFingerprint.toStdString();
-    std::vector<std::uint8_t> peer(fp.begin(), fp.end());
-    engine_.send_text(peer, text.toStdString());
+    // Placeholder: until the UI is wired to peer discovery + sessions, echo the
+    // outgoing message straight back so the chat screen is usable.
+    emit messageReceived(peerFingerprint, text, /*outgoing=*/true);
 }

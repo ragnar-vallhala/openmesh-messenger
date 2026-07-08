@@ -90,11 +90,44 @@ static void test_rejects_bad_input() {
     assert(parse(trailing, out) == ParseError::TrailingBytes);
 }
 
+static void test_associated_data() {
+    Packet p;
+    p.type = PacketType::Message;
+    p.flags = kFlagEncrypted;
+    p.counter = 7;
+    p.source = {0x01, 0x02};
+    p.destination = {0x03};
+    p.payload = {0xAA, 0xBB, 0xCC};
+
+    // AAD is the serialization without the payload field.
+    const Bytes aad = associated_data(p);
+    const Bytes wire = serialize(p);
+    assert(aad.size() < wire.size());
+    assert(Bytes(wire.begin(), wire.begin() + static_cast<std::ptrdiff_t>(aad.size())) == aad);
+
+    // Independent of the payload...
+    Packet q = p;
+    q.payload = {0xFF};
+    assert(associated_data(q) == aad);
+
+    // ...but bound to every envelope field.
+    Packet r = p;
+    r.counter = 8;
+    assert(associated_data(r) != aad);
+    r = p;
+    r.destination = {0x04};
+    assert(associated_data(r) != aad);
+    r = p;
+    r.flags = kFlagNone;
+    assert(associated_data(r) != aad);
+}
+
 int main() {
     test_full_roundtrip();
     test_empty_fields();
     test_byte_layout();
     test_rejects_bad_input();
+    test_associated_data();
 
     assert(to_string(PacketType::ContactRequest) == "CONTACT_REQUEST");
     assert(to_string(ParseError::BadMagic) == "bad-magic");

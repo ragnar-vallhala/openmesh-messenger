@@ -1,5 +1,6 @@
 #include "server.hpp"
 
+#include "openmesh/core/hex.hpp"
 #include "openmesh/core/logging.hpp"
 #include "openmesh/crypto/common.hpp"
 #include "openmesh/crypto/random.hpp"
@@ -18,16 +19,7 @@ using protocol::PacketType;
 
 constexpr std::size_t kChallengeBytes = 32;
 
-std::string to_hex(const Bytes& bytes) {
-    static constexpr char kHex[] = "0123456789abcdef";
-    std::string out;
-    out.reserve(bytes.size() * 2);
-    for (std::uint8_t b : bytes) {
-        out.push_back(kHex[b >> 4]);
-        out.push_back(kHex[b & 0x0F]);
-    }
-    return out;
-}
+using core::to_hex;
 
 Bytes to_bytes(const std::string& s) {
     return Bytes(s.begin(), s.end());

@@ -1,4 +1,5 @@
 add_library(openmesh_messaging STATIC
+    src/session.cpp
     src/engine.cpp
 )
 add_library(openmesh::messaging ALIAS openmesh_messaging)

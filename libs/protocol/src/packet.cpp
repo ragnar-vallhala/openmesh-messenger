@@ -78,23 +78,34 @@ std::string_view to_string(ParseError error) {
     return "unknown";
 }
 
-Bytes serialize(const Packet& packet) {
-    Bytes out;
-    out.reserve(kHeaderSize + 3 * sizeof(std::uint16_t) + packet.source.size() +
-                packet.destination.size() + packet.payload.size());
-
-    // Fixed header.
+namespace {
+// Write the fixed header followed by the source and destination fields — i.e.
+// everything except the payload. This is exactly the AEAD associated data.
+void write_header_and_routing(Bytes& out, const Packet& packet) {
     put_u16(out, kMagic);
     out.push_back(packet.version);
     out.push_back(static_cast<std::uint8_t>(packet.type));
     out.push_back(packet.flags);
     put_u64(out, packet.counter);
-
-    // Variable, length-prefixed sections.
     put_field(out, packet.source);
     put_field(out, packet.destination);
-    put_field(out, packet.payload);
+}
+} // namespace
 
+Bytes serialize(const Packet& packet) {
+    Bytes out;
+    out.reserve(kHeaderSize + 3 * sizeof(std::uint16_t) + packet.source.size() +
+                packet.destination.size() + packet.payload.size());
+    write_header_and_routing(out, packet);
+    put_field(out, packet.payload);
+    return out;
+}
+
+Bytes associated_data(const Packet& packet) {
+    Bytes out;
+    out.reserve(kHeaderSize + 2 * sizeof(std::uint16_t) + packet.source.size() +
+                packet.destination.size());
+    write_header_and_routing(out, packet);
     return out;
 }
 

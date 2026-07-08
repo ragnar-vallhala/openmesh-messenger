@@ -77,6 +77,13 @@ enum class ParseError {
 // (u16 length prefix). This holds for any datagram-sized packet.
 [[nodiscard]] Bytes serialize(const Packet& packet);
 
+// The bytes an AEAD binds as associated data: the fixed header plus the source
+// and destination fields — everything except the payload (wire-format §8). Both
+// peers compute this identically, so tampering with any envelope field makes
+// decryption fail. Independent of the payload, so it can be computed before the
+// ciphertext exists.
+[[nodiscard]] Bytes associated_data(const Packet& packet);
+
 // Parse a packet from wire bytes, reporting the precise failure reason.
 [[nodiscard]] ParseError parse(const Bytes& bytes, Packet& out);
 
