@@ -1,0 +1,15 @@
+# Keep the Docker build context small and reproducible.
+build/
+build-*/
+cmake-build-*/
+.git/
+.github/
+.cache/
+.clangd/
+.idea/
+.vscode/
+*.o
+*.a
+*.so
+# Docs and non-server components aren't needed to build the signaling image,
+# but they're tiny; leaving them in keeps CMake's add_subdirectory happy.

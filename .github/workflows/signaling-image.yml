@@ -1,0 +1,63 @@
+name: signaling-image
+
+# Build the signaling server container and push it to GitHub Container Registry
+# (ghcr.io/<owner>/openmesh-signaling). Multi-arch so it runs on both the amd64
+# control-plane and the arm64 (Raspberry Pi) nodes.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "libs/**"
+      - "servers/signaling/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - "docker/signaling.Dockerfile"
+      - ".github/workflows/signaling-image.yml"
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/openmesh-signaling
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata (tags/labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=long
+            type=ref,event=tag
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/signaling.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

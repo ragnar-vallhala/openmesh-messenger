@@ -1,0 +1,82 @@
+# OpenMesh signaling server on k3s.
+#
+# Pinned to the public-IP control-plane node and published on hostPort 4433/UDP,
+# so clients reach it at <node-public-ip>:4433 (e.g. 147.93.98.89:4433).
+#
+#   kubectl apply -f deploy/k8s/signaling.yaml
+#
+# The image is built and pushed by .github/workflows/signaling-image.yml. Make the
+# GHCR package public (Packages -> openmesh-signaling -> visibility) so the cluster
+# can pull it without a secret, or add an imagePullSecret below.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openmesh
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: signaling
+  namespace: openmesh
+  labels:
+    app: signaling
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: signaling
+  template:
+    metadata:
+      labels:
+        app: signaling
+    spec:
+      # Land on the node that holds the public IP.
+      nodeSelector:
+        kubernetes.io/hostname: srv1237670
+      # Tolerate a control-plane taint if one is configured (harmless otherwise).
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      # imagePullSecrets:
+      #   - name: ghcr-cred
+      containers:
+        - name: signaling
+          image: ghcr.io/ragnar-vallhala/openmesh-signaling:latest
+          imagePullPolicy: Always
+          args: ["0.0.0.0", "4433"]
+          ports:
+            - name: signaling-udp
+              containerPort: 4433
+              hostPort: 4433 # binds <node-ip>:4433/udp
+              protocol: UDP
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+---
+# In-cluster access (optional): lets pods reach the server at
+# signaling.openmesh.svc.cluster.local:4433.
+apiVersion: v1
+kind: Service
+metadata:
+  name: signaling
+  namespace: openmesh
+spec:
+  selector:
+    app: signaling
+  ports:
+    - name: signaling-udp
+      port: 4433
+      targetPort: 4433
+      protocol: UDP

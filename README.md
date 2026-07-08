@@ -80,7 +80,24 @@ cmake -S . -B build -DOPENMESH_BUILD_CLIENT=OFF -DOPENMESH_BUILD_TOOLS=OFF
 cmake --build build -j
 ```
 
+## Try it
+
+```sh
+# 1. run a signaling server (any host; public IP for internet use)
+./build/servers/signaling/openmesh-signaling 0.0.0.0 4433
+# 2. run the CLI client, share your /id, /add a peer, /msg them
+./build/cli/om-chat --server <host>:4433 --name alice
+```
+
+See [`cli/README.md`](cli/README.md) for the client and [`deploy/README.md`](deploy/README.md)
+for running the signaling server as a container (published to GHCR by CI) on
+Docker or k3s.
+
 ## Status
 
-Early scaffolding. The directory structure and build wiring are in place; most
-sources are stubs pending the protocol and crypto specifications in `docs/`.
+Working v1 of the core: Ed25519 identities, a v1 wire protocol, libsodium crypto
+(X25519 key agreement + XChaCha20-Poly1305), a UDP transport, a signaling server
+with proof-of-ownership registration, the contact-request flow, end-to-end
+encrypted messaging, at-rest encrypted persistence, and the `om-chat` CLI. Not yet
+done: the relay server (FR-8), NAT hole-punching, and forward secrecy (Double
+Ratchet). See `docs/` and per-directory READMEs.
