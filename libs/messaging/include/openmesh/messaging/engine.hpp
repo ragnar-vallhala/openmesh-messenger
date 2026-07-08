@@ -42,6 +42,15 @@ public:
     [[nodiscard]] std::optional<net::Endpoint> local_endpoint() const;
     [[nodiscard]] net::UdpSocket& transport() { return socket_; }
 
+    // Make the contact database durable and encrypted at rest (SRS FR-9): loads
+    // any existing contacts and auto-persists subsequent changes. Returns false
+    // on a wrong passphrase / corrupt file. Runtime state (sessions, peer
+    // addresses, in-flight requests) is not persisted and is re-established after
+    // a restart via add_peer()/discovery.
+    bool open_store(const std::string& path, const std::string& passphrase) {
+        return contacts_.open(path, passphrase);
+    }
+
     // Trust a peer directly (keys exchanged out of band): establishes the session
     // and marks the contact Accepted. Returns false if key agreement fails.
     bool add_peer(const Bytes& remote_public, const net::Endpoint& endpoint);

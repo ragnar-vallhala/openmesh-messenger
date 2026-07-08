@@ -17,6 +17,11 @@ add_executable(om-contacts-demo contactsdemo/main.cpp)
 target_link_libraries(om-contacts-demo PRIVATE
     openmesh::messaging openmesh::crypto openmesh::net openmesh::core openmesh_warnings)
 
+# At-rest encrypted persistence demonstration (SRS FR-9).
+add_executable(om-persist-demo persistdemo/main.cpp)
+target_link_libraries(om-persist-demo PRIVATE
+    openmesh::storage openmesh::crypto openmesh::core openmesh_warnings)
+
 # Full-stack demo: signaling discovery + encrypted messaging. Needs the server
 # logic, so only when the servers are being built.
 if(TARGET signaling_core)

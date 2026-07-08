@@ -90,11 +90,14 @@ A signaling server issues a random challenge on `REGISTER`; the peer returns an
 **Ed25519 signature** over it (`sign_detached` / `verify_detached`). The server
 verifies against the claimed public key. It never sees or stores a private key.
 
-## 9. Key storage (planned)
+## 9. Key storage (implemented)
 
-The on-device secret key is encrypted at rest with a key derived from a user
-passphrase via **Argon2id** (`crypto_pwhash`) and sealed with secretbox. Platform
-secure storage is used where available (desktop keyring; Android Keystore).
+The on-device secret key and contact database are encrypted at rest with a key
+derived from a user passphrase via **Argon2id** (`crypto::derive_key`,
+`crypto_pwhash`) and sealed with XChaCha20-Poly1305 (`openmesh::storage`, SRS
+FR-9/§13). The key is derived once per session and reused for cheap saves.
+Platform secure storage (desktop keyring; Android Keystore) to hold that key is a
+follow-up.
 
 ## 10. Deferred / open items
 

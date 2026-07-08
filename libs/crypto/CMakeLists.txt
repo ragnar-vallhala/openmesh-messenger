@@ -5,6 +5,7 @@ add_library(openmesh_crypto STATIC
     src/aead.cpp
     src/key_agreement.cpp
     src/random.cpp
+    src/kdf.cpp
 )
 add_library(openmesh::crypto ALIAS openmesh_crypto)
 

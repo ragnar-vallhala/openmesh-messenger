@@ -1,5 +1,7 @@
 add_library(openmesh_storage STATIC
     src/store.cpp
+    src/identity_store.cpp
+    src/blob.cpp
 )
 add_library(openmesh::storage ALIAS openmesh_storage)
 
