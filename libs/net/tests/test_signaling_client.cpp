@@ -15,7 +15,8 @@ int main() {
     };
 
     // Port 9 (discard) on loopback: no signaling server listening.
-    SignalingClient client(Endpoint{"127.0.0.1", 9}, Bytes(32, 0x11), signer);
+    UdpSocket socket;
+    SignalingClient client(socket, Endpoint{"127.0.0.1", 9}, Bytes(32, 0x11), signer);
 
     // REGISTER: no challenge ever arrives -> false, fast.
     assert(!client.register_self(/*timeout_ms=*/100, /*attempts=*/1));

@@ -16,9 +16,15 @@ namespace openmesh::net {
 // callback, so the caller (which owns the private key via openmesh::crypto)
 // supplies it and this library keeps its clean layering.
 //
+// Operates over a *borrowed* UdpSocket the caller owns. This lets signaling share
+// the very socket used for messaging, so the endpoint the server observes and
+// registers is exactly where MESSAGE packets will arrive (see Engine::transport()).
+// The socket must outlive the client.
+//
 // Synchronous, blocking-with-timeout for v1. A non-blocking/event-loop variant
 // is a follow-up; while awaiting a specific reply, unrelated inbound datagrams
-// are currently discarded.
+// are currently discarded — so drive signaling before the messaging receive loop
+// starts, since the two share one socket.
 class SignalingClient {
 public:
     // Produces the signature over a challenge nonce (Ed25519, 64 bytes).
@@ -32,8 +38,9 @@ public:
     static constexpr int kDefaultTimeoutMs = 700;
     static constexpr int kDefaultAttempts = 3;
 
-    // `public_key` is the local Ed25519 identity (used as the source id).
-    SignalingClient(Endpoint server, Bytes public_key, Signer signer);
+    // `socket` is the (caller-owned) transport to use; `public_key` is the local
+    // Ed25519 identity used as the source id.
+    SignalingClient(UdpSocket& socket, Endpoint server, Bytes public_key, Signer signer);
 
     // Run the REGISTER proof-of-ownership handshake. Retries the whole handshake
     // up to `attempts` times (a fresh challenge each time), tolerating loss of
@@ -64,10 +71,10 @@ private:
     // elapses; unrelated packets are discarded.
     std::optional<protocol::Packet> await_packet(protocol::PacketType expected, int timeout_ms);
 
+    UdpSocket& socket_; // borrowed; owned by the caller
     Endpoint server_;
     Bytes public_key_;
     Signer signer_;
-    UdpSocket socket_;
 };
 
 } // namespace openmesh::net

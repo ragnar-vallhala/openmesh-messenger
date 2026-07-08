@@ -31,8 +31,10 @@ std::optional<Endpoint> parse_endpoint(const Bytes& payload) {
 
 } // namespace
 
-SignalingClient::SignalingClient(Endpoint server, Bytes public_key, Signer signer)
-    : server_(std::move(server)), public_key_(std::move(public_key)), signer_(std::move(signer)) {
+SignalingClient::SignalingClient(UdpSocket& socket, Endpoint server, Bytes public_key,
+                                 Signer signer)
+    : socket_(socket), server_(std::move(server)), public_key_(std::move(public_key)),
+      signer_(std::move(signer)) {
 }
 
 bool SignalingClient::send(const Packet& packet) {

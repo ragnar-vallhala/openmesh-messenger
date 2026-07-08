@@ -34,8 +34,10 @@ int main() {
     const crypto::Identity alice = crypto::generate_identity();
     const crypto::Identity bob = crypto::generate_identity();
 
-    SignalingClient alice_client(*server_ep, alice.public_key, signer_for(alice));
-    SignalingClient bob_client(*server_ep, bob.public_key, signer_for(bob));
+    net::UdpSocket alice_socket;
+    net::UdpSocket bob_socket;
+    SignalingClient alice_client(alice_socket, *server_ep, alice.public_key, signer_for(alice));
+    SignalingClient bob_client(bob_socket, *server_ep, bob.public_key, signer_for(bob));
 
     // Both register (proof-of-ownership handshake over real sockets).
     assert(alice_client.register_self());

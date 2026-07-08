@@ -16,3 +16,11 @@ add_executable(test_signaling_e2e test_e2e.cpp)
 target_link_libraries(test_signaling_e2e
     PRIVATE signaling_core openmesh::net openmesh::crypto Threads::Threads openmesh_warnings)
 add_test(NAME signaling.e2e COMMAND test_signaling_e2e)
+
+# Full stack: signaling discovery + end-to-end encrypted messaging over one
+# shared socket per peer (openmesh::messaging on top of the same transport).
+add_executable(test_signaling_fullstack test_fullstack.cpp)
+target_link_libraries(test_signaling_fullstack
+    PRIVATE signaling_core openmesh::net openmesh::messaging openmesh::crypto
+            Threads::Threads openmesh_warnings)
+add_test(NAME signaling.fullstack COMMAND test_signaling_fullstack)

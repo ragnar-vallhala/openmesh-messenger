@@ -35,6 +35,11 @@ challenge is delegated to an injected `Signer` callback so this library stays
 crypto-free; the caller supplies it with `openmesh::crypto`. Synchronous with
 per-request timeouts and whole-handshake retries.
 
+It operates over a **borrowed** `UdpSocket` so it can share the messaging
+transport (`messaging::Engine::transport()`): the endpoint the server registers
+is then exactly where MESSAGE packets arrive. Drive signaling before starting the
+messaging receive loop, since both read the one socket.
+
 Still to come: the connection strategy (direct/NAT/relay), the relay client, a
 non-blocking/event-loop receive path, and retransmission tuning — layered on top
 of this socket.

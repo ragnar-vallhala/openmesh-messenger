@@ -47,6 +47,13 @@ server → CONNECT     src = target_public_key
 The returned `host:port` is the target's registered (observed) endpoint — the
 starting point for a direct connection (SRS FR-7).
 
+> **Shared transport.** Because the server registers a peer at the endpoint it is
+> *observed* from, a peer must run signaling and messaging over the **same UDP
+> socket** — otherwise the registered address would not be where messages arrive.
+> In the implementation, `net::SignalingClient` borrows the messaging socket
+> (`messaging::Engine::transport()`), so a discovered address reaches the peer's
+> messenger directly. The `om-connect-demo` tool shows the full flow.
+
 ## Connection-info relay (NAT traversal)
 
 To exchange ICE/connection candidates, a peer sends `CONNECT` addressed to

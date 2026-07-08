@@ -53,6 +53,12 @@ public:
 
     void on_message(MessageHandler handler) { handler_ = std::move(handler); }
 
+    // The underlying transport socket. Exposed so signaling can share the *same*
+    // socket (net::SignalingClient), ensuring the endpoint registered with a
+    // signaling server is exactly where MESSAGE packets arrive. Drive signaling
+    // before the poll() loop, since both read this one socket.
+    [[nodiscard]] net::UdpSocket& transport() { return socket_; }
+
 private:
     Bytes local_public_;
     Bytes local_secret_;
