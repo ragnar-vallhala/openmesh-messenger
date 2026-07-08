@@ -16,3 +16,15 @@ Responsibilities:
 
 Depends on `protocol` for packet (de)serialization. Knows nothing about message
 contents — it only sees encrypted payloads.
+
+## Socket Layer
+
+`udp_socket.hpp` — **implemented.** `UdpSocket` is a thin, Qt-free wrapper over
+POSIX BSD sockets (IPv4 + IPv6): `bind()`, `send_to()`, and `receive()` with an
+optional timeout, plus non-blocking mode and `local_endpoint()`. `Datagram` pairs
+received bytes with their source `Endpoint`. This is the base the higher-level
+engine builds on. Windows/Winsock support is a TODO.
+
+Still to come: the connection strategy (direct/NAT/relay), signaling- and
+relay-client logic, reconnection, and retransmission — layered on top of this
+socket.
