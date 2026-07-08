@@ -31,6 +31,9 @@ option(OPENMESH_BUILD_TESTS   "Build unit tests"                           ON)
 
 include(OpenMeshWarnings)
 
+# Cryptographic backend (libsodium). Provides the sodium::sodium target.
+include(Sodium)
+
 if(OPENMESH_BUILD_TESTS)
     enable_testing()
 endif()

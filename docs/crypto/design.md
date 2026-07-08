@@ -1,39 +1,110 @@
-# Cryptography Design
+# Cryptography Design (v1)
 
-> Status: **TODO** — this is where the concrete scheme must be pinned down before
-> any real use. The `openmesh::crypto` library currently ships insecure
-> placeholders.
+Status: **Locked v1 — primitives implemented.** The algorithm choices below are
+decided (see [ADR 0002](../adr/0002-crypto-primitives.md)). The low-level
+primitives — identity, signing, key agreement, and AEAD — are implemented in
+`openmesh::crypto` on top of **libsodium**. The forward-secret session ratchet
+(§6) is designed here but not yet implemented.
 
-## Requirements (SRS §5, §6)
+Any change to an algorithm or on-the-wire crypto parameter requires a new ADR.
 
-- End-to-end encryption of every message.
-- Authentication of every packet; reject tampered packets.
+## 1. Requirements traced (SRS §5, §6, §11, FR-1, FR-5)
+
+- End-to-end encryption of every message; authenticate every packet; reject
+  tampered packets.
 - Replay protection.
-- Perfect Forward Secrecy (future).
+- Perfect Forward Secrecy (target; §6).
 - Secure on-device key storage.
-- Servers can verify **proof of key ownership** without seeing private keys (§11).
+- Proof of key ownership without revealing private keys (§11).
 
-## Proposed primitives (to confirm)
+## 2. Backend
 
-Recommended backend: **libsodium**.
+**libsodium** (see [`third_party/README.md`](../../third_party/README.md) for how
+it is vendored/linked). Chosen for being audited, misuse-resistant, and portable
+to Android. It is an implementation detail — no `<sodium.h>` type appears in any
+public `openmesh::crypto` header, so the backend can be replaced without churning
+call sites.
 
-| Purpose            | Candidate                                   |
-|--------------------|---------------------------------------------|
-| Identity signing   | Ed25519                                     |
-| Key agreement      | X25519                                      |
-| AEAD (messages)    | XChaCha20-Poly1305                          |
-| Hashing/fingerprint| BLAKE2b or SHA-256                          |
-| Session / PFS      | Double Ratchet-style scheme                 |
-| Proof of ownership | Sign a server-issued challenge (Ed25519)    |
+## 3. Primitives (decided)
 
-## Identity (SRS §4, FR-1)
+| Purpose             | Algorithm                        | libsodium API                              |
+|---------------------|----------------------------------|--------------------------------------------|
+| Identity signing    | **Ed25519**                      | `crypto_sign_*`                            |
+| Key agreement       | **X25519** (derived from Ed25519)| `crypto_scalarmult` + `..._to_curve25519`  |
+| AEAD (messages)     | **XChaCha20-Poly1305-IETF**      | `crypto_aead_xchacha20poly1305_ietf_*`     |
+| Hash / fingerprint  | **BLAKE2b-256**                  | `crypto_generichash`                       |
+| Password KDF (§7)   | **Argon2id**                     | `crypto_pwhash`                            |
+| Session ratchet (§6)| **Double Ratchet** (planned)     | built on the above                         |
 
-The public key (or its fingerprint) *is* the user's permanent identity. No
-usernames, emails, or phone numbers. Private keys never leave the device.
+Key/opaque sizes (mirrored as constants in `common.hpp`, static_assert-checked):
+public key 32 B, secret key 64 B, signature 64 B, fingerprint 32 B, session key
+32 B, AEAD nonce 24 B, AEAD tag 16 B.
 
-## Open questions
+## 4. Identity (SRS §4, FR-1)
 
-- Exact handshake / session-setup message flow.
-- Ratchet parameters and key rotation policy.
-- Multi-device key sharing (SRS FR-10, future).
-- Secure key storage per platform (desktop keyring vs Android Keystore).
+- An identity is a single **Ed25519** key pair. The **public key** is the user's
+  permanent identity; the **secret key** never leaves the device.
+- **Fingerprint** = lowercase hex of `BLAKE2b-256(public_key)` — the
+  human-shareable identifier. No usernames, emails or phone numbers.
+- **Export/import**: the raw secret key round-trips an identity
+  (`identity_from_secret` recovers the public key from it).
+- A single Ed25519 identity is reused for X25519 key agreement via the standard
+  `ed25519 → curve25519` conversion, avoiding a second long-term key.
+
+## 5. Key agreement
+
+Both peers derive an identical 32-byte session key from their identities:
+
+1. Convert each side's Ed25519 keys to X25519.
+2. `dh = X25519(my_curve_sk, their_curve_pk)` — fails closed on low-order points.
+3. `session_key = BLAKE2b(dh ‖ lo_pub ‖ hi_pub)` where `lo_pub`/`hi_pub` are the
+   two X25519 public keys in canonical (sorted) order, so initiator and
+   responder compute the same key.
+
+This static ECDH is the **building block**. It is not yet forward-secret on its
+own — that comes from the ratchet (§6).
+
+## 6. Sessions, PFS & replay (target)
+
+- **Handshake:** an X3DH-style exchange over `HELLO`/`CONTACT_REQUEST` /
+  `CONTACT_RESPONSE` to agree an initial root key.
+- **Ratchet:** a **Double Ratchet** advances message keys per message, giving
+  Perfect Forward Secrecy and post-compromise security (SRS §6, future).
+- **Replay/ordering:** the wire `counter` (per-sender monotonic, see
+  [wire-format §7](../protocol/wire-format.md#7-counter-ordering--replay-protection))
+  is tracked per session; non-increasing counters are rejected.
+
+## 7. Message encryption & envelope integrity
+
+- Messages are sealed with **XChaCha20-Poly1305-IETF**. `seal()` returns
+  `nonce ‖ ciphertext ‖ tag`; the 24-byte nonce is random per message (XChaCha's
+  extended nonce makes random generation collision-safe).
+- The **serialized packet envelope** (fixed header + `source` + `destination`) is
+  passed as AEAD **associated data**, binding it to the ciphertext. Tampering
+  with any envelope field makes `open()` fail — so tampered packets are rejected
+  without a separate signature field (SRS §5; wire-format §8).
+
+## 8. Proof of key ownership (SRS §11)
+
+A signaling server issues a random challenge on `REGISTER`; the peer returns an
+**Ed25519 signature** over it (`sign_detached` / `verify_detached`). The server
+verifies against the claimed public key. It never sees or stores a private key.
+
+## 9. Key storage (planned)
+
+The on-device secret key is encrypted at rest with a key derived from a user
+passphrase via **Argon2id** (`crypto_pwhash`) and sealed with secretbox. Platform
+secure storage is used where available (desktop keyring; Android Keystore).
+
+## 10. Deferred / open items
+
+- Double Ratchet implementation and the X3DH handshake message formats.
+- Multi-device key sharing (SRS FR-10).
+- At-rest key storage implementation per platform.
+- Formal review of the key-agreement KDF against a standard (HKDF vs BLAKE2b).
+
+## 11. Reference
+
+- Public API: `libs/crypto/include/openmesh/crypto/`
+  (`identity.hpp`, `sign.hpp`, `key_agreement.hpp`, `aead.hpp`).
+- Tests exercising every primitive: `libs/crypto/tests/test_identity.cpp`.
