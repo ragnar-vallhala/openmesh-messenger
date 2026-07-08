@@ -25,6 +25,16 @@ optional timeout, plus non-blocking mode and `local_endpoint()`. `Datagram` pair
 received bytes with their source `Endpoint`. This is the base the higher-level
 engine builds on. Windows/Winsock support is a TODO.
 
-Still to come: the connection strategy (direct/NAT/relay), signaling- and
-relay-client logic, reconnection, and retransmission — layered on top of this
-socket.
+## Signaling client
+
+`signaling_client.hpp` — **implemented.** `SignalingClient` performs the
+registration handshake (`register_self()`) and peer lookup (`discover()`) against
+a signaling server, plus `send_connect()`, `heartbeat()` and `disconnect()`
+(see [signaling sub-protocol](../../docs/protocol/signaling.md)). Signing the
+challenge is delegated to an injected `Signer` callback so this library stays
+crypto-free; the caller supplies it with `openmesh::crypto`. Synchronous with
+per-request timeouts and whole-handshake retries.
+
+Still to come: the connection strategy (direct/NAT/relay), the relay client, a
+non-blocking/event-loop receive path, and retransmission tuning — layered on top
+of this socket.

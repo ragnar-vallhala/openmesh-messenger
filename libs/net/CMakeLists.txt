@@ -1,6 +1,7 @@
 add_library(openmesh_net STATIC
     src/transport.cpp
     src/udp_socket.cpp
+    src/signaling_client.cpp
 )
 add_library(openmesh::net ALIAS openmesh_net)
 
