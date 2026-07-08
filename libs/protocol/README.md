@@ -22,7 +22,13 @@ Packet types (SRS §9):
 Design notes:
 - Servers parse only the **envelope** (routing headers); the `MESSAGE` payload is
   ciphertext and must never be decryptable by signaling or relay (SRS §5, §6, §8).
-- Serialization format is TBD — see [`docs/protocol/`](../../docs/protocol/).
-  Candidates: a compact hand-rolled binary layout, CBOR, or protobuf.
-- Every packet carries authentication material so tampered packets are rejected
-  (SRS §5); the actual MAC/signature lives in `openmesh::crypto`.
+- The **v1 wire format is implemented**: a 13-byte fixed header
+  (`magic`, `version`, `type`, `flags`, `counter`) followed by three
+  u16-length-prefixed fields (`source`, `destination`, `payload`), big-endian.
+  See [`docs/protocol/wire-format.md`](../../docs/protocol/wire-format.md) for the
+  authoritative spec. `serialize()` / `parse()` / `deserialize()` live in
+  [`packet.hpp`](include/openmesh/protocol/packet.hpp).
+- Envelope integrity is achieved by binding the header + routing ids as AEAD
+  associated data in `openmesh::crypto` (not by a separate signature field), so
+  tampered packets fail to decrypt (SRS §5). Per-type payload formats are still
+  being specified.
