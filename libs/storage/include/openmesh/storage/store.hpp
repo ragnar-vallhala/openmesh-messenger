@@ -15,8 +15,16 @@ namespace openmesh::storage {
 class Store {
 public:
     void add_contact(const Contact& contact);
+
+    // Insert a contact, or replace the existing one with the same public key.
+    void upsert(const Contact& contact);
+
     [[nodiscard]] std::vector<Contact> contacts() const;
     [[nodiscard]] std::optional<Contact> find(const std::vector<std::uint8_t>& public_key) const;
+
+    // Trust status of a contact, or nullopt if unknown (never seen).
+    [[nodiscard]] std::optional<TrustStatus>
+    trust_of(const std::vector<std::uint8_t>& public_key) const;
 
 private:
     std::vector<Contact> contacts_;

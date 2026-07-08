@@ -34,9 +34,15 @@ public:
     // the send counter. Returns a packet with an empty payload if !valid().
     protocol::Packet encrypt(const Bytes& plaintext);
 
-    // Decrypt a received MESSAGE packet. Returns nullopt if the packet is not a
-    // valid, in-order, authentic message for this session (wrong type/flags,
-    // wrong peer, replayed/old counter, or failed authentication).
+    // Encrypt `plaintext` into an encrypted packet of the given type (e.g.
+    // MESSAGE, CONTACT_REQUEST, CONTACT_RESPONSE). Shares the session's send
+    // counter and AEAD binding. Returns an empty-payload packet if !valid().
+    protocol::Packet encrypt_as(protocol::PacketType type, const Bytes& plaintext);
+
+    // Decrypt any received encrypted packet from the peer. Returns nullopt if the
+    // packet is not encrypted, is not from this peer / addressed to us, is
+    // replayed/old, or fails authentication. The caller inspects packet.type
+    // (authenticated via the associated data) to dispatch.
     std::optional<Bytes> decrypt(const protocol::Packet& packet);
 
 private:

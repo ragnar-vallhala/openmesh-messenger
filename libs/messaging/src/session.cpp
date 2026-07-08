@@ -16,8 +16,12 @@ Session::Session(Bytes local_public, Bytes local_secret, Bytes remote_public)
 }
 
 protocol::Packet Session::encrypt(const Bytes& plaintext) {
+    return encrypt_as(protocol::PacketType::Message, plaintext);
+}
+
+protocol::Packet Session::encrypt_as(protocol::PacketType type, const Bytes& plaintext) {
     protocol::Packet packet;
-    packet.type = protocol::PacketType::Message;
+    packet.type = type;
     packet.flags = protocol::kFlagEncrypted;
     packet.counter = send_counter_++;
     packet.source = local_public_;
@@ -36,7 +40,7 @@ std::optional<Bytes> Session::decrypt(const protocol::Packet& packet) {
     if (!valid_) {
         return std::nullopt;
     }
-    if (packet.type != protocol::PacketType::Message || !packet.encrypted()) {
+    if (!packet.encrypted()) {
         return std::nullopt;
     }
     // Must be from our peer and addressed to us.

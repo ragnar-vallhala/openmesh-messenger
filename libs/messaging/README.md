@@ -14,15 +14,23 @@ the UI").
   associated data. A per-session monotonic counter gives message ordering and
   replay protection (rejects tampered, replayed, old, or misaddressed packets).
 - **`Engine`** (`engine.hpp`) — the UI-independent Messaging Engine (SRS §10).
-  Owns a UDP socket and a `Session` per peer: `add_peer()`, `send()` (encrypt +
-  transmit), and `poll()` (receive + decrypt + deliver via callback). No Qt types.
+  Owns a UDP socket, a `Session` per peer, and the local contact database
+  (`storage::Store`): `add_peer()`, `send()` (encrypt + transmit), and `poll()`
+  (receive + decrypt + dispatch). No Qt types.
+- **Contact-request flow** (SRS FR-2, §7). `send_contact_request()`,
+  `accept_contact()`, `reject_contact()`, with `on_contact_request` /
+  `on_contact_response` callbacks. Enforced rules: unknown users may send exactly
+  **one** contact request; only **accepted** contacts can exchange messages —
+  messages from non-accepted peers are dropped at the receiver. Contact
+  requests/responses are themselves encrypted via the peer `Session`
+  (`CONTACT_REQUEST` / `CONTACT_RESPONSE` packets).
 
-See the `om-chat-demo` tool for a runnable end-to-end demonstration, and
-`docs/crypto/design.md` for the session design.
+See `om-chat-demo` (encryption) and `om-contacts-demo` (contact flow) for runnable
+demonstrations, and `docs/crypto/design.md` for the session design.
 
 > Not yet forward-secret: sessions use static ECDH; the Double Ratchet is a
-> follow-up. Also still to come: the contact-request flow (SRS FR-2), persistence
-> via `storage`, timestamps/delivery status, and a non-blocking receive path.
+> follow-up. Also still to come: durable persistence (the contact database is
+> in-memory), timestamps/delivery status, and a non-blocking receive path.
 
 ## Responsibilities (target)
 

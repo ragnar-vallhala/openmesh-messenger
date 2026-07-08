@@ -12,6 +12,11 @@ add_executable(om-chat-demo chatdemo/main.cpp)
 target_link_libraries(om-chat-demo PRIVATE
     openmesh::messaging openmesh::crypto openmesh::protocol openmesh::net openmesh::core openmesh_warnings)
 
+# Contact-request flow demonstration (SRS FR-2).
+add_executable(om-contacts-demo contactsdemo/main.cpp)
+target_link_libraries(om-contacts-demo PRIVATE
+    openmesh::messaging openmesh::crypto openmesh::net openmesh::core openmesh_warnings)
+
 # Full-stack demo: signaling discovery + encrypted messaging. Needs the server
 # logic, so only when the servers are being built.
 if(TARGET signaling_core)
