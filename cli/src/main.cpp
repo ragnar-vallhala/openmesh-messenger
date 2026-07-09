@@ -12,6 +12,7 @@
 #include "openmesh/net/endpoint.hpp"
 #include "openmesh/net/signaling_client.hpp"
 #include "openmesh/storage/identity_store.hpp"
+#include "tui.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -25,6 +26,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <unistd.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -107,6 +109,9 @@ public:
     }
     void stop() { running_ = false; }
     [[nodiscard]] bool running() const { return running_; }
+    bool open_store(const std::string& path, const std::string& pass) {
+        return engine_.open_store(path, pass);
+    }
 
     void run() {
         engine_.on_message([this](const Message& m) {
@@ -481,9 +486,22 @@ int main(int argc, char** argv) {
         std::cout << "Using an ephemeral identity (not saved). Use --identity to keep one.\n";
     }
 
-    std::cout << "Your fingerprint: " << id.fingerprint() << "\n";
+    // Persistence path derives from the identity file (encrypted with the same
+    // passphrase): <identity>.store holds contacts, chats and requests.
+    const std::string store_path = identity_file.empty() ? "" : identity_file + ".store";
 
+    // On a real terminal, launch the full-screen TUI; otherwise (piped/scripted)
+    // fall back to the line-based client.
+    if (::isatty(STDIN_FILENO) && ::isatty(STDOUT_FILENO)) {
+        return omchat::run_tui(std::move(id), server_ep, relay_ep, display_name, store_path,
+                               passphrase);
+    }
+
+    std::cout << "Your fingerprint: " << id.fingerprint() << "\n";
     ChatApp app(std::move(id), server_ep, relay_ep, display_name);
+    if (!store_path.empty() && !passphrase.empty()) {
+        app.open_store(store_path, passphrase);
+    }
     std::thread net([&app] { app.run(); });
 
     std::string line;

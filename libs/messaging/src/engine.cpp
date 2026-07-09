@@ -4,6 +4,7 @@
 #include "openmesh/protocol/packet.hpp"
 
 #include <cstdlib>
+#include <ctime>
 #include <string>
 #include <utility>
 
@@ -20,11 +21,8 @@ constexpr std::uint8_t kReject = 0x00;
 constexpr int kMaxProbes = 12;
 constexpr auto kProbeInterval = std::chrono::milliseconds(250);
 
-storage::Contact make_contact(const Bytes& public_key, storage::TrustStatus trust) {
-    storage::Contact c;
-    c.public_key = public_key;
-    c.trust = trust;
-    return c;
+std::int64_t now_seconds() {
+    return static_cast<std::int64_t>(std::time(nullptr));
 }
 
 std::optional<net::Endpoint> parse_endpoint(const Bytes& payload) {
@@ -163,12 +161,43 @@ Session* Engine::ensure_session(const Bytes& remote_public) {
     return &inserted->second;
 }
 
-bool Engine::send_packet(const std::string& key, const protocol::Packet& packet) {
-    auto endpoint = endpoints_.find(key);
-    if (endpoint == endpoints_.end()) {
+void Engine::set_trust(const Bytes& peer, storage::TrustStatus trust) {
+    auto existing = contacts_.find(peer);
+    storage::Contact c = existing.value_or(storage::Contact{});
+    c.public_key = peer;
+    c.trust = trust;
+    contacts_.upsert(c);
+}
+
+void Engine::set_nickname(const Bytes& remote_public, const std::string& name) {
+    auto existing = contacts_.find(remote_public);
+    storage::Contact c = existing.value_or(storage::Contact{});
+    c.public_key = remote_public;
+    c.nickname = name;
+    contacts_.upsert(c);
+}
+
+bool Engine::open_store(const std::string& path, const std::string& passphrase) {
+    if (!contacts_.open(path, passphrase)) {
         return false;
     }
-    return socket_.send_to(endpoint->second, protocol::serialize(packet));
+    // Re-surface persisted pending requests so they can still be accepted.
+    for (const auto& q : contacts_.requests()) {
+        incoming_requests_.insert(core::to_hex(q.peer));
+    }
+    return true;
+}
+
+bool Engine::send_packet(const std::string& key, const protocol::Packet& packet) {
+    auto endpoint = endpoints_.find(key);
+    // Fall back to the relay for any peer whose direct endpoint we don't know
+    // (e.g. after a restart) — the relay routes by destination public key.
+    const net::Endpoint* dest =
+        endpoint != endpoints_.end() ? &endpoint->second : (relay_ ? &*relay_ : nullptr);
+    if (!dest) {
+        return false;
+    }
+    return socket_.send_to(*dest, protocol::serialize(packet));
 }
 
 bool Engine::add_peer(const Bytes& remote_public, const net::Endpoint& endpoint) {
@@ -177,7 +206,7 @@ bool Engine::add_peer(const Bytes& remote_public, const net::Endpoint& endpoint)
     }
     const std::string key = core::to_hex(remote_public);
     endpoints_.insert_or_assign(key, endpoint);
-    contacts_.upsert(make_contact(remote_public, storage::TrustStatus::Accepted));
+    set_trust(remote_public, storage::TrustStatus::Accepted);
     return true;
 }
 
@@ -201,7 +230,7 @@ bool Engine::send_contact_request(const Bytes& remote_public, const net::Endpoin
     const std::string key = core::to_hex(remote_public);
     endpoints_.insert_or_assign(key, endpoint);
     outgoing_requests_.insert(key);
-    contacts_.upsert(make_contact(remote_public, storage::TrustStatus::Pending));
+    set_trust(remote_public, storage::TrustStatus::Pending);
     return send_packet(key, session->encrypt_as(PacketType::ContactRequest, greeting));
 }
 
@@ -215,7 +244,8 @@ bool Engine::accept_contact(const Bytes& remote_public) {
         return false;
     }
     incoming_requests_.erase(key);
-    contacts_.upsert(make_contact(remote_public, storage::TrustStatus::Accepted));
+    contacts_.remove_request(remote_public);
+    set_trust(remote_public, storage::TrustStatus::Accepted);
     return send_packet(key, session->encrypt_as(PacketType::ContactResponse, Bytes{kAccept}));
 }
 
@@ -229,7 +259,8 @@ bool Engine::reject_contact(const Bytes& remote_public) {
         return false;
     }
     incoming_requests_.erase(key);
-    contacts_.upsert(make_contact(remote_public, storage::TrustStatus::Rejected));
+    contacts_.remove_request(remote_public);
+    set_trust(remote_public, storage::TrustStatus::Rejected);
     return send_packet(key, session->encrypt_as(PacketType::ContactResponse, Bytes{kReject}));
 }
 
@@ -241,7 +272,12 @@ bool Engine::send(const Bytes& remote_public, const Bytes& plaintext) {
     if (!session) {
         return false;
     }
-    return send_packet(core::to_hex(remote_public), session->encrypt(plaintext));
+    if (!send_packet(core::to_hex(remote_public), session->encrypt(plaintext))) {
+        return false;
+    }
+    contacts_.append_message(
+        {remote_public, std::string(plaintext.begin(), plaintext.end()), true, now_seconds()});
+    return true;
 }
 
 bool Engine::poll(int timeout_ms) {
@@ -306,6 +342,8 @@ bool Engine::poll(int timeout_ms) {
 }
 
 void Engine::handle_message(const Bytes& peer, Bytes plaintext) {
+    contacts_.append_message(
+        {peer, std::string(plaintext.begin(), plaintext.end()), false, now_seconds()});
     if (message_handler_) {
         message_handler_(Message{peer, std::move(plaintext), false});
     }
@@ -321,7 +359,12 @@ void Engine::handle_contact_request(const Bytes& peer, Bytes greeting, const net
         return;
     }
     incoming_requests_.insert(key);
-    contacts_.upsert(make_contact(peer, storage::TrustStatus::Pending));
+    set_trust(peer, storage::TrustStatus::Pending);
+    const std::string greeting_text(greeting.begin(), greeting.end());
+    if (!greeting_text.empty()) {
+        set_nickname(peer, greeting_text); // the greeting is the sender's display name
+    }
+    contacts_.add_request({peer, greeting_text, now_seconds()});
     if (request_handler_) {
         request_handler_(peer, greeting);
     }
@@ -334,8 +377,7 @@ void Engine::handle_contact_response(const Bytes& peer, const Bytes& decision) {
     }
     outgoing_requests_.erase(key);
     const bool accepted = !decision.empty() && decision[0] == kAccept;
-    contacts_.upsert(make_contact(peer, accepted ? storage::TrustStatus::Accepted
-                                                 : storage::TrustStatus::Rejected));
+    set_trust(peer, accepted ? storage::TrustStatus::Accepted : storage::TrustStatus::Rejected);
     if (response_handler_) {
         response_handler_(peer, accepted);
     }

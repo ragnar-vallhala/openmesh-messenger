@@ -50,13 +50,19 @@ public:
     // forwards by destination public key.
     bool announce_to(const net::Endpoint& relay);
 
-    // Make the contact database durable and encrypted at rest (SRS FR-9): loads
-    // any existing contacts and auto-persists subsequent changes. Returns false
-    // on a wrong passphrase / corrupt file. Runtime state (sessions, peer
-    // addresses, in-flight requests) is not persisted and is re-established after
-    // a restart via add_peer()/discovery.
-    bool open_store(const std::string& path, const std::string& passphrase) {
-        return contacts_.open(path, passphrase);
+    // Make local state durable and encrypted at rest (SRS FR-9): loads contacts,
+    // conversation history and pending requests, and auto-persists subsequent
+    // changes. Returns false on a wrong passphrase / corrupt file. Transient
+    // runtime state (sessions, peer addresses) is re-established after a restart.
+    bool open_store(const std::string& path, const std::string& passphrase);
+
+    // --- App model (for a UI: chats, history, pending requests) -------------
+    [[nodiscard]] std::vector<storage::Contact> contacts() const { return contacts_.contacts(); }
+    [[nodiscard]] std::vector<storage::Message> conversation(const Bytes& peer) const {
+        return contacts_.conversation(peer);
+    }
+    [[nodiscard]] std::vector<storage::Request> pending_requests() const {
+        return contacts_.requests();
     }
 
     // Trust a peer directly (keys exchanged out of band): establishes the session
@@ -64,6 +70,9 @@ public:
     bool add_peer(const Bytes& remote_public, const net::Endpoint& endpoint);
     [[nodiscard]] bool knows_peer(const Bytes& remote_public) const;
     [[nodiscard]] std::optional<storage::TrustStatus> trust_of(const Bytes& remote_public) const;
+
+    // Set a local display name for a peer (persisted; preserves trust status).
+    void set_nickname(const Bytes& remote_public, const std::string& name);
 
     // --- Contact-request flow (SRS FR-2) ------------------------------------
     // Send a one-shot contact request to a peer (optionally with a greeting).
@@ -110,6 +119,7 @@ public:
 
 private:
     Session* ensure_session(const Bytes& remote_public);
+    void set_trust(const Bytes& peer, storage::TrustStatus trust); // preserves other fields
     bool send_packet(const std::string& key, const protocol::Packet& packet);
     void send_probe(const Bytes& peer, const net::Endpoint& to);
     void start_probing(const Bytes& peer, const net::Endpoint& candidate);

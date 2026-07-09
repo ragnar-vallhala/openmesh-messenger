@@ -1,11 +1,33 @@
 # om-chat — command-line client
 
-A minimal terminal client for OpenMesh Messenger: register with a signaling
-server, discover peers by public key, run the contact-request flow, and exchange
-end-to-end encrypted messages.
+A terminal client for OpenMesh Messenger. On a real terminal it runs a
+**full-screen TUI** with a sidebar (Chats + Requests) and a conversation pane;
+when output is piped/redirected it falls back to a simple line mode (handy for
+scripting).
 
-Networking runs on a background thread that owns the messaging engine; the main
-thread only reads stdin, so all engine access stays single-threaded.
+```
+┌ OpenMesh  alice  8be636d097…            bob  ● direct ┐
+│ CHATS               │ 12:20  bob   hey there          │
+│▸bob      hey there  │ 12:21  you   hi bob              │
+│                     │ 12:30  bob   how's it going      │
+│ REQUESTS (1)        │                                  │
+│ carol   "hi!"       │                                  │
+├─────────────────────┴──────────────────────────────────┤
+│ > type a message…                                      │
+│ ↑/↓ select  Enter send  a/r accept/reject  /add /quit  │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Keys:** `↑`/`↓` select a chat or request · `Enter` send to the selected chat ·
+`a`/`r` accept/reject the selected request · `PgUp`/`PgDn` scroll · commands
+`/add <name> <pubkey>`, `/id`, `/accept`, `/reject`, `/quit`.
+
+**Persistence:** with `--identity <file> --pass <phrase>`, your identity,
+contacts, **conversation history**, and pending requests are stored encrypted at
+rest (in `<file>.store`) and restored on the next launch.
+
+Networking runs on a background thread that owns the messaging engine; the UI
+thread only renders and reads keys, so engine access stays single-threaded.
 
 ## Build & run
 

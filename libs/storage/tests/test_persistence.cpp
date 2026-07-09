@@ -102,8 +102,65 @@ static void test_identity_persist() {
     fs::remove(path, ec);
 }
 
+static void test_messages_and_requests_persist() {
+    const std::string path = temp_path("om_test_history.omdb");
+    const Bytes alice = {0x01, 0x02};
+    const Bytes carol = {0x0C};
+
+    {
+        Store store;
+        assert(store.open(path, "pw"));
+        Message m1;
+        m1.peer = alice;
+        m1.text = "hi";
+        m1.outgoing = true;
+        m1.timestamp = 100;
+        Message m2;
+        m2.peer = alice;
+        m2.text = "hey back";
+        m2.outgoing = false;
+        m2.timestamp = 101;
+        store.append_message(m1);
+        store.append_message(m2);
+
+        Request q;
+        q.peer = carol;
+        q.greeting = "let me in";
+        q.timestamp = 200;
+        store.add_request(q);
+        store.add_request(q); // duplicate ignored
+    }
+
+    // Reopen -> conversation history and pending request survive.
+    {
+        Store store;
+        assert(store.open(path, "pw"));
+        assert(store.messages().size() == 2);
+        auto conv = store.conversation(alice);
+        assert(conv.size() == 2);
+        assert(conv[0].text == "hi" && conv[0].outgoing);
+        assert(conv[1].text == "hey back" && !conv[1].outgoing);
+
+        assert(store.requests().size() == 1);
+        assert(store.requests()[0].greeting == "let me in");
+
+        // Answering a request removes it (and persists).
+        store.remove_request(carol);
+        assert(store.requests().empty());
+    }
+    {
+        Store store;
+        assert(store.open(path, "pw"));
+        assert(store.requests().empty()); // removal persisted
+    }
+
+    std::error_code ec;
+    fs::remove(path, ec);
+}
+
 int main() {
     test_contacts_persist();
     test_identity_persist();
+    test_messages_and_requests_persist();
     return 0;
 }
