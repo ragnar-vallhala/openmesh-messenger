@@ -58,11 +58,12 @@ spec:
             capabilities:
               drop: ["ALL"]
           resources:
+            # No CPU request/limit: the server is idle-bound and the
+            # control-plane node is fully committed on CPU requests. (A CPU limit
+            # would make k8s default the request to the limit, which won't fit.)
             requests:
-              cpu: 25m
               memory: 32Mi
             limits:
-              cpu: 250m
               memory: 128Mi
 ---
 # In-cluster access (optional): lets pods reach the server at
