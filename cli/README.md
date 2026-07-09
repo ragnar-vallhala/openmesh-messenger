@@ -11,10 +11,16 @@ thread only reads stdin, so all engine access stays single-threaded.
 
 ```sh
 cmake -S . -B build && cmake --build build --target om-chat
-./build/cli/om-chat --server <host:port> [--identity <file> --pass <phrase>] [--name <display>]
+./build/cli/om-chat (--server <host:port> | --relay <host:port>) \
+    [--identity <file> --pass <phrase>] [--name <display>]
 ```
 
-- `--server` (required) — address of a signaling server (`openmesh-signaling`).
+- `--server` — address of a signaling server (`openmesh-signaling`), for direct
+  connections. Optional if `--relay` is given.
+- `--relay` — address of a relay server (`openmesh-relay`). **Works through NAT**:
+  both peers only send outbound to the relay, which forwards by destination public
+  key. In relay mode `/add` needs no discovery — just the peer's public key. One
+  of `--server` / `--relay` is required (both may be given).
 - `--identity <file>` + `--pass <phrase>` — persist a stable identity, encrypted
   at rest. Without them a fresh (ephemeral) identity is used each run. The
   passphrase may also be given via the `OM_PASS` environment variable.

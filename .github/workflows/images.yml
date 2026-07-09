@@ -1,19 +1,19 @@
-name: signaling-image
+name: images
 
-# Build the signaling server container and push it to GitHub Container Registry
-# (ghcr.io/<owner>/openmesh-signaling). Multi-arch so it runs on both the amd64
-# control-plane and the arm64 (Raspberry Pi) nodes.
+# Build the server container images and push them to GitHub Container Registry
+# (ghcr.io/<owner>/openmesh-<component>). Multi-arch so they run on both the
+# amd64 control-plane and the arm64 (Raspberry Pi) nodes.
 
 on:
   push:
     branches: [master]
     paths:
       - "libs/**"
-      - "servers/signaling/**"
+      - "servers/**"
       - "cmake/**"
       - "CMakeLists.txt"
-      - "docker/signaling.Dockerfile"
-      - ".github/workflows/signaling-image.yml"
+      - "docker/**"
+      - ".github/workflows/images.yml"
     tags: ["v*"]
   workflow_dispatch:
 
@@ -21,12 +21,12 @@ permissions:
   contents: read
   packages: write
 
-env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/openmesh-signaling
-
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [signaling, relay]
     steps:
       - uses: actions/checkout@v4
 
@@ -44,7 +44,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE }}
+          images: ghcr.io/${{ github.repository_owner }}/openmesh-${{ matrix.component }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,format=long
@@ -54,10 +54,10 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/signaling.Dockerfile
+          file: docker/${{ matrix.component }}.Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}

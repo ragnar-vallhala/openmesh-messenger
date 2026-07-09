@@ -3,14 +3,15 @@
 The signaling server is packaged as a container and published to the GitHub
 Container Registry, so anyone can run a public OpenMesh signaling node.
 
-## Image
+## Images
 
-- Dockerfile: [`docker/signaling.Dockerfile`](../docker/signaling.Dockerfile)
-  (multi-stage; ~85 MB Debian-slim runtime with just the binary + libsodium).
-- CI: [`.github/workflows/signaling-image.yml`](../.github/workflows/signaling-image.yml)
-  builds **linux/amd64 + linux/arm64** on every push to `master` (or a `v*` tag)
-  and pushes to `ghcr.io/<owner>/openmesh-signaling` with tags `latest`,
-  `sha-<commit>`, and the git tag.
+- Dockerfiles: [`docker/signaling.Dockerfile`](../docker/signaling.Dockerfile) and
+  [`docker/relay.Dockerfile`](../docker/relay.Dockerfile) (multi-stage, Debian-slim
+  runtimes with just the binary).
+- CI: [`.github/workflows/images.yml`](../.github/workflows/images.yml) builds both
+  components for **linux/amd64 + linux/arm64** on every push to `master` (or a
+  `v*` tag) and pushes to `ghcr.io/<owner>/openmesh-signaling` and
+  `…/openmesh-relay` with tags `latest`, `sha-<commit>`, and the git tag.
 
 ## Run it anywhere (Docker)
 
@@ -29,12 +30,14 @@ om-chat --server <this-host-public-ip>:4433 --name alice
 ## Run it on the k3s cluster
 
 ```sh
-kubectl apply -f deploy/k8s/signaling.yaml
+kubectl apply -f deploy/k8s/signaling.yaml   # discovery, UDP 4433
+kubectl apply -f deploy/k8s/relay.yaml       # NAT-traversal relay, UDP 4434
 kubectl -n openmesh get pods -o wide
 ```
 
-This pins the pod to the public-IP node (`srv1237670`) and publishes
-`hostPort 4433/udp`, so the server is reachable at `147.93.98.89:4433`.
+These pin the pods to the public-IP node (`srv1237670`) and publish
+`hostPort 4433/udp` (signaling) and `4434/udp` (relay), reachable at
+`147.93.98.89:4433` and `147.93.98.89:4434`.
 
 **Make the image pullable.** GHCR packages are private by default. Either:
 
@@ -57,6 +60,6 @@ This pins the pod to the public-IP node (`srv1237670`) and publishes
   replica is fine; it can be restarted freely.
 - To pin a specific build instead of `latest`, set the image tag to
   `sha-<commit>` and drop `imagePullPolicy: Always`.
-- NAT: the signaling server itself works across the internet, but two peers that
-  are **both** behind NAT still can't exchange messages directly until the relay
-  (FR-8) exists. Peers on public IPs / same LAN / with one public side work today.
+- NAT: with the **relay** deployed, two peers that are both behind NAT can chat —
+  point the client at it: `om-chat --relay <public-ip>:4434`. The signaling server
+  handles discovery for direct connections; the relay forwards when direct fails.

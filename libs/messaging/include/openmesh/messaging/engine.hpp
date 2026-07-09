@@ -42,6 +42,13 @@ public:
     [[nodiscard]] std::optional<net::Endpoint> local_endpoint() const;
     [[nodiscard]] net::UdpSocket& transport() { return socket_; }
 
+    // Announce our presence to a relay server (SRS FR-8): sends a source-tagged
+    // keepalive so the relay learns the endpoint to reach us at. Call on startup
+    // and periodically. To route messages via the relay, use the relay's address
+    // as the peer endpoint in add_peer()/send_contact_request(); the relay
+    // forwards by destination public key.
+    bool announce_to(const net::Endpoint& relay);
+
     // Make the contact database durable and encrypted at rest (SRS FR-9): loads
     // any existing contacts and auto-persists subsequent changes. Returns false
     // on a wrong passphrase / corrupt file. Runtime state (sessions, peer

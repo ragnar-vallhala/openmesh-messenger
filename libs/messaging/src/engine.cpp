@@ -35,6 +35,15 @@ std::optional<net::Endpoint> Engine::local_endpoint() const {
     return socket_.local_endpoint();
 }
 
+bool Engine::announce_to(const net::Endpoint& relay) {
+    // A source-tagged, no-destination packet: the relay records where to reach us
+    // but forwards nothing.
+    protocol::Packet hello;
+    hello.type = protocol::PacketType::Hello;
+    hello.source = local_public_;
+    return socket_.send_to(relay, protocol::serialize(hello));
+}
+
 Session* Engine::ensure_session(const Bytes& remote_public) {
     const std::string key = core::to_hex(remote_public);
     auto it = sessions_.find(key);

@@ -19,6 +19,7 @@
 #include <deque>
 #include <filesystem>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <sstream>
@@ -89,10 +90,15 @@ SignalingClient::Signer signer_for(const Bytes& secret_key) {
 
 class ChatApp {
 public:
-    ChatApp(Identity id, Endpoint server, std::string display_name)
+    ChatApp(Identity id, std::optional<Endpoint> server, std::optional<Endpoint> relay,
+            std::string display_name)
         : self_(std::move(id)), display_name_(std::move(display_name)),
-          engine_(self_.public_key, self_.secret_key),
-          sig_(engine_.transport(), server, self_.public_key, signer_for(self_.secret_key)) {}
+          engine_(self_.public_key, self_.secret_key), relay_(relay) {
+        if (server) {
+            sig_ = std::make_unique<SignalingClient>(engine_.transport(), *server, self_.public_key,
+                                                     signer_for(self_.secret_key));
+        }
+    }
 
     void submit(const std::string& line) {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -124,17 +130,22 @@ public:
             running_ = false;
             return;
         }
-        std::cout << "Registering with the signaling server...\n";
-        if (sig_.register_self()) {
-            std::cout << "Registered. You are online.\n";
-        } else {
-            std::cout << "Registration failed (is the server reachable?). You can retry with "
-                         "/register.\n";
+        if (sig_) {
+            std::cout << "Registering with the signaling server...\n";
+            std::cout << (sig_->register_self()
+                              ? "Registered.\n"
+                              : "Registration failed (server reachable?). Retry with /register.\n");
         }
+        if (relay_) {
+            engine_.announce_to(*relay_);
+            std::cout << "Using relay " << relay_->to_string() << ".\n";
+        }
+        std::cout << "You are online.\n";
         print_help();
         std::cout << "> " << std::flush;
 
         auto last_heartbeat = std::chrono::steady_clock::now();
+        auto last_announce = std::chrono::steady_clock::now();
         while (running_) {
             std::deque<std::string> lines;
             {
@@ -149,9 +160,13 @@ public:
             }
             engine_.poll(/*timeout_ms=*/50);
             const auto now = std::chrono::steady_clock::now();
-            if (now - last_heartbeat > std::chrono::seconds(30)) {
-                sig_.heartbeat();
+            if (sig_ && now - last_heartbeat > std::chrono::seconds(30)) {
+                sig_->heartbeat();
                 last_heartbeat = now;
+            }
+            if (relay_ && now - last_announce > std::chrono::seconds(20)) {
+                engine_.announce_to(*relay_); // keep the relay route + NAT mapping fresh
+                last_announce = now;
             }
         }
     }
@@ -224,7 +239,11 @@ private:
             std::cout << "public key: " << hex(self_.public_key) << "\n"
                       << "fingerprint: " << self_.fingerprint() << "\n";
         } else if (cmd == "/register") {
-            std::cout << (sig_.register_self() ? "Registered.\n" : "Registration failed.\n");
+            if (sig_) {
+                std::cout << (sig_->register_self() ? "Registered.\n" : "Registration failed.\n");
+            } else {
+                std::cout << "no signaling server configured (relay mode)\n";
+            }
         } else if (cmd == "/add") {
             cmd_add(in);
         } else if (cmd == "/accept" || cmd == "/reject") {
@@ -251,8 +270,19 @@ private:
         pk_to_name_[hex(*pk)] = name;
         current_ = *pk;
 
+        // In relay mode there's no address to look up: the relay routes by
+        // destination public key, so send the request straight to the relay.
+        if (relay_) {
+            if (engine_.send_contact_request(*pk, *relay_, to_bytes(display_name_))) {
+                std::cout << "Request sent via relay. Waiting for " << name << " to accept.\n";
+            } else {
+                std::cout << "Could not send the request.\n";
+            }
+            return;
+        }
+
         std::cout << "Looking up " << name << "...\n";
-        auto found = sig_.discover(*pk);
+        auto found = sig_->discover(*pk);
         if (!found.endpoint) {
             std::cout << (found.responded ? "Peer is offline (not registered).\n"
                                           : "No response from the signaling server.\n");
@@ -336,7 +366,8 @@ private:
     Identity self_;
     std::string display_name_;
     Engine engine_;
-    SignalingClient sig_;
+    std::unique_ptr<SignalingClient> sig_; // null in relay-only mode
+    std::optional<Endpoint> relay_;
 
     std::mutex mutex_;
     std::deque<std::string> queue_;
@@ -349,19 +380,24 @@ private:
 };
 
 void usage() {
-    std::cout << "usage: om-chat --server <host:port> [--identity <file> --pass <passphrase>] "
-                 "[--name <display name>]\n";
+    std::cout
+        << "usage: om-chat (--server <host:port> | --relay <host:port>) "
+           "[--identity <file> --pass <passphrase>] [--name <display name>]\n"
+           "  --server  a signaling server (direct connections)\n"
+           "  --relay   a relay server (works through NAT; can be used together with --server)\n";
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
-    std::string server, identity_file, passphrase, display_name;
+    std::string server, relay, identity_file, passphrase, display_name;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> std::string { return (i + 1 < argc) ? argv[++i] : std::string(); };
         if (a == "--server")
             server = next();
+        else if (a == "--relay")
+            relay = next();
         else if (a == "--identity")
             identity_file = next();
         else if (a == "--pass")
@@ -384,8 +420,9 @@ int main(int argc, char** argv) {
     }
 
     auto server_ep = parse_endpoint(server);
-    if (!server_ep) {
-        std::cout << "error: --server <host:port> is required\n";
+    auto relay_ep = parse_endpoint(relay);
+    if (!server_ep && !relay_ep) {
+        std::cout << "error: one of --server or --relay <host:port> is required\n";
         usage();
         return 1;
     }
@@ -420,7 +457,7 @@ int main(int argc, char** argv) {
 
     std::cout << "Your fingerprint: " << id.fingerprint() << "\n";
 
-    ChatApp app(std::move(id), *server_ep, display_name);
+    ChatApp app(std::move(id), server_ep, relay_ep, display_name);
     std::thread net([&app] { app.run(); });
 
     std::string line;
