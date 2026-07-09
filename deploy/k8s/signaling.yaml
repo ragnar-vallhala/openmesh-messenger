@@ -23,6 +23,10 @@ metadata:
     app: signaling
 spec:
   replicas: 1
+  # hostPort can't be double-bound, so replace the pod rather than surge a second
+  # one (which would deadlock waiting for the port).
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: signaling

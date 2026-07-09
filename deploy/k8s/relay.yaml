@@ -15,6 +15,9 @@ metadata:
     app: relay
 spec:
   replicas: 1
+  # hostPort can't be double-bound, so replace the pod rather than surge a second.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: relay
