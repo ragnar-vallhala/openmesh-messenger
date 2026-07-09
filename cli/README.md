@@ -15,12 +15,15 @@ cmake -S . -B build && cmake --build build --target om-chat
     [--identity <file> --pass <phrase>] [--name <display>]
 ```
 
-- `--server` — address of a signaling server (`openmesh-signaling`), for direct
-  connections. Optional if `--relay` is given.
-- `--relay` — address of a relay server (`openmesh-relay`). **Works through NAT**:
-  both peers only send outbound to the relay, which forwards by destination public
-  key. In relay mode `/add` needs no discovery — just the peer's public key. One
-  of `--server` / `--relay` is required (both may be given).
+- `--server` — a signaling server (`openmesh-signaling`): discovery + your public
+  address (STUN) + hole-punch coordination.
+- `--relay` — a relay server (`openmesh-relay`): forwards through NAT.
+- One of the two is required. **Give both for the best experience** (recommended):
+  messages flow via the relay immediately (reliable, NAT-proof) and the client
+  hole-punches a **direct** path in the background, upgrading transparently when it
+  succeeds — it prints `* direct connection to <peer> established (no relay)`. This
+  is how WebRTC/Tailscale behave (TURN relay + ICE). `--relay` alone works but
+  never goes direct; `--server` alone goes direct only when peers are reachable.
 - `--identity <file>` + `--pass <phrase>` — persist a stable identity, encrypted
   at rest. Without them a fresh (ephemeral) identity is used each run. The
   passphrase may also be given via the `OM_PASS` environment variable.

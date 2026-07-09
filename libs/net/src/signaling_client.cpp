@@ -85,7 +85,9 @@ bool SignalingClient::register_self(int timeout_ms, int attempts) {
         if (!send(signed_register)) {
             continue;
         }
-        if (await_packet(PacketType::Ack, timeout_ms)) {
+        if (auto ack = await_packet(PacketType::Ack, timeout_ms)) {
+            // STUN: the ACK payload is our public endpoint as the server saw it.
+            public_endpoint_ = parse_endpoint(ack->payload);
             return true;
         }
         // No ACK: retry the whole handshake (the server issues a fresh challenge).

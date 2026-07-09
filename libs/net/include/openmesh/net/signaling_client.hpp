@@ -65,6 +65,11 @@ public:
     }
     [[nodiscard]] const UdpSocket& socket() const { return socket_; }
 
+    // Our public endpoint as observed by the signaling server (STUN), learned on
+    // a successful register_self(). Used to advertise ourselves for direct/hole-
+    // punched connections.
+    [[nodiscard]] std::optional<Endpoint> public_endpoint() const { return public_endpoint_; }
+
 private:
     bool send(const protocol::Packet& packet);
     // Receive datagrams until one of `expected` type arrives or the timeout
@@ -75,6 +80,7 @@ private:
     Endpoint server_;
     Bytes public_key_;
     Signer signer_;
+    std::optional<Endpoint> public_endpoint_;
 };
 
 } // namespace openmesh::net

@@ -3,6 +3,8 @@
 #include "openmesh/core/hex.hpp"
 #include "openmesh/protocol/packet.hpp"
 
+#include <cstdlib>
+#include <string>
 #include <utility>
 
 namespace openmesh::messaging {
@@ -14,11 +16,30 @@ using protocol::PacketType;
 constexpr std::uint8_t kAccept = 0x01;
 constexpr std::uint8_t kReject = 0x00;
 
+// Hole-punch tuning: probe up to ~3s, then rely on the relay fallback.
+constexpr int kMaxProbes = 12;
+constexpr auto kProbeInterval = std::chrono::milliseconds(250);
+
 storage::Contact make_contact(const Bytes& public_key, storage::TrustStatus trust) {
     storage::Contact c;
     c.public_key = public_key;
     c.trust = trust;
     return c;
+}
+
+std::optional<net::Endpoint> parse_endpoint(const Bytes& payload) {
+    if (payload.empty()) {
+        return std::nullopt;
+    }
+    const std::string s(payload.begin(), payload.end());
+    const auto pos = s.rfind(':');
+    if (pos == std::string::npos || pos + 1 >= s.size()) {
+        return std::nullopt;
+    }
+    net::Endpoint ep;
+    ep.host = s.substr(0, pos);
+    ep.port = static_cast<std::uint16_t>(std::strtoul(s.c_str() + pos + 1, nullptr, 10));
+    return ep;
 }
 
 } // namespace
@@ -42,6 +63,90 @@ bool Engine::announce_to(const net::Endpoint& relay) {
     hello.type = protocol::PacketType::Hello;
     hello.source = local_public_;
     return socket_.send_to(relay, protocol::serialize(hello));
+}
+
+void Engine::send_probe(const Bytes& peer, const net::Endpoint& to) {
+    // A hole-punch probe: HELLO addressed to the peer (a destination distinguishes
+    // it from a relay announce). Sending it opens our NAT toward `to`.
+    protocol::Packet probe;
+    probe.type = protocol::PacketType::Hello;
+    probe.source = local_public_;
+    probe.destination = peer;
+    socket_.send_to(to, protocol::serialize(probe));
+}
+
+void Engine::start_probing(const Bytes& peer, const net::Endpoint& candidate) {
+    const std::string key = core::to_hex(peer);
+    auto it = probes_.find(key);
+    if (it != probes_.end() && it->second.confirmed) {
+        return; // already have a direct path
+    }
+    Probe& p = probes_[key];
+    p.peer = peer;
+    p.candidate = candidate;
+    p.last = std::chrono::steady_clock::now();
+    p.attempts = 1;
+    send_probe(peer, candidate);
+}
+
+net::Endpoint Engine::connect(const Bytes& remote_public, const net::Endpoint& candidate) {
+    const std::string key = core::to_hex(remote_public);
+    // Send via the relay immediately (works through NAT) while we try to punch a
+    // direct path; if no relay, use the candidate directly (best effort).
+    const net::Endpoint active = relay_ ? *relay_ : candidate;
+    endpoints_.insert_or_assign(key, active);
+    start_probing(remote_public, candidate);
+    return active;
+}
+
+void Engine::tick() {
+    const auto now = std::chrono::steady_clock::now();
+    for (auto& [key, p] : probes_) {
+        if (p.confirmed || p.attempts >= kMaxProbes) {
+            continue;
+        }
+        if (now - p.last >= kProbeInterval) {
+            send_probe(p.peer, p.candidate);
+            ++p.attempts;
+            p.last = now;
+        }
+    }
+    // Fallback needs no explicit timer: while a path is unconfirmed the active
+    // endpoint is already the relay (set in connect()); a successful probe just
+    // upgrades it to direct in handle_probe().
+}
+
+bool Engine::has_direct_path(const Bytes& remote_public) const {
+    auto it = probes_.find(core::to_hex(remote_public));
+    return it != probes_.end() && it->second.confirmed;
+}
+
+void Engine::handle_probe(const Bytes& peer, const net::Endpoint& from) {
+    const std::string key = core::to_hex(peer);
+    Probe& p = probes_[key];
+    p.peer = peer;
+    const bool was_confirmed = p.confirmed;
+    p.confirmed = true;
+    // Upgrade to the confirmed direct path.
+    endpoints_.insert_or_assign(key, from);
+    if (!was_confirmed) {
+        // Reply so the peer confirms its side too (once; avoids ping-pong).
+        send_probe(peer, from);
+    }
+}
+
+void Engine::handle_connect(const Bytes& peer, const Bytes& payload) {
+    // The peer told us (via signaling) its public endpoint — probe it to punch a
+    // hole back. Ensure we at least have the relay as a fallback path meanwhile.
+    auto ep = parse_endpoint(payload);
+    if (!ep) {
+        return;
+    }
+    const std::string key = core::to_hex(peer);
+    if (endpoints_.find(key) == endpoints_.end() && relay_) {
+        endpoints_.insert_or_assign(key, *relay_);
+    }
+    start_probing(peer, *ep);
 }
 
 Session* Engine::ensure_session(const Bytes& remote_public) {
@@ -150,6 +255,19 @@ bool Engine::poll(int timeout_ms) {
     }
     const Bytes& peer = packet.source;
 
+    // Connectivity-control packets (unencrypted, handled before the crypto path).
+    if (packet.type == PacketType::Hello) {
+        // A hole-punch probe addressed to us.
+        if (packet.destination == local_public_ && !peer.empty()) {
+            handle_probe(peer, datagram->from);
+        }
+        return true;
+    }
+    if (packet.type == PacketType::Connect) {
+        handle_connect(peer, packet.payload); // peer advertised its endpoint
+        return true;
+    }
+
     // Spam gate: drop a message from a non-accepted peer before any crypto work.
     if (packet.type == PacketType::Message &&
         contacts_.trust_of(peer) != storage::TrustStatus::Accepted) {
@@ -164,8 +282,13 @@ bool Engine::poll(int timeout_ms) {
     if (!plaintext) {
         return false;
     }
-    // Track the peer's current address so replies reach it.
-    endpoints_.insert_or_assign(core::to_hex(peer), datagram->from);
+    // Track the peer's current address so replies reach it — but never downgrade a
+    // confirmed direct path (e.g. a message that arrived via the relay).
+    const std::string key = core::to_hex(peer);
+    auto probe = probes_.find(key);
+    if (probe == probes_.end() || !probe->second.confirmed) {
+        endpoints_.insert_or_assign(key, datagram->from);
+    }
 
     switch (packet.type) {
     case PacketType::Message:

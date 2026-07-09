@@ -10,3 +10,7 @@ add_test(NAME messaging.engine COMMAND test_messaging)
 add_executable(test_contacts test_contacts.cpp)
 target_link_libraries(test_contacts PRIVATE openmesh::messaging openmesh::crypto openmesh_warnings)
 add_test(NAME messaging.contacts COMMAND test_contacts)
+
+add_executable(test_holepunch test_holepunch.cpp)
+target_link_libraries(test_holepunch PRIVATE openmesh::messaging openmesh::crypto openmesh_warnings)
+add_test(NAME messaging.holepunch COMMAND test_holepunch)

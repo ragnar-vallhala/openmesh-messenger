@@ -99,7 +99,9 @@ void SignalingServer::handle_register(const Packet& in, const Endpoint& from, st
         registry_.upsert(key, from, now);
         pending_.erase(it);
         core::log_info("signaling: registered " + key.substr(0, 16) + "… at " + from.to_string());
-        out.push_back({from, make(PacketType::Ack)});
+        // STUN-style: tell the peer the public endpoint we observed it at, so it
+        // can advertise it to others for direct (hole-punched) connections.
+        out.push_back({from, make(PacketType::Ack, {}, {}, to_bytes(from.to_string()))});
     }
 }
 

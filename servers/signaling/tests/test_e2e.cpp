@@ -43,6 +43,10 @@ int main() {
     assert(alice_client.register_self());
     assert(bob_client.register_self());
 
+    // STUN: each learns its own public endpoint from the register ACK.
+    assert(alice_client.public_endpoint().has_value());
+    assert(alice_client.public_endpoint()->port == alice_client.local_endpoint()->port);
+
     // Alice discovers Bob -> gets Bob's actual registered port.
     auto found_bob = alice_client.discover(bob.public_key);
     assert(found_bob.responded);

@@ -5,6 +5,7 @@
 #include "openmesh/net/udp_socket.hpp"
 #include "openmesh/storage/store.hpp"
 
+#include <chrono>
 #include <functional>
 #include <optional>
 #include <string>
@@ -76,9 +77,27 @@ public:
     // Encrypt and send a message. Fails unless the peer is an accepted contact.
     bool send(const Bytes& remote_public, const Bytes& plaintext);
 
+    // --- Connectivity: hole punching + relay fallback (ICE-lite, SRS FR-7) ---
+    // Configure a relay to fall back to (and use immediately while probing).
+    void set_relay(const net::Endpoint& relay) { relay_ = relay; }
+
+    // Begin establishing a path to a peer at a discovered candidate endpoint:
+    // send UDP hole-punch probes toward it, while routing messages via the relay
+    // (if set) or the candidate meanwhile. Returns the endpoint to send to now;
+    // it is transparently upgraded to a direct path once a probe round-trips.
+    net::Endpoint connect(const Bytes& remote_public, const net::Endpoint& candidate);
+
+    // Drive periodic re-probing and the direct→relay fallback timer. Call it
+    // regularly (e.g. each poll loop).
+    void tick();
+
+    // Whether a direct (hole-punched) path to the peer has been confirmed. False
+    // means traffic is going via the relay/candidate.
+    [[nodiscard]] bool has_direct_path(const Bytes& remote_public) const;
+
     // Receive at most one datagram (waiting up to timeout_ms) and dispatch it:
-    // deliver a message, surface a contact request/response, or drop it (e.g. a
-    // message from a non-accepted peer). Returns true iff something was handled.
+    // deliver a message, surface a contact request/response, answer/handle a
+    // connectivity probe, or drop it. Returns true iff something was handled.
     bool poll(int timeout_ms);
 
     void on_message(MessageHandler handler) { message_handler_ = std::move(handler); }
@@ -92,15 +111,29 @@ public:
 private:
     Session* ensure_session(const Bytes& remote_public);
     bool send_packet(const std::string& key, const protocol::Packet& packet);
+    void send_probe(const Bytes& peer, const net::Endpoint& to);
+    void start_probing(const Bytes& peer, const net::Endpoint& candidate);
 
     void handle_message(const Bytes& peer, Bytes plaintext);
     void handle_contact_request(const Bytes& peer, Bytes greeting, const net::Endpoint& from);
     void handle_contact_response(const Bytes& peer, const Bytes& decision);
+    void handle_probe(const Bytes& peer, const net::Endpoint& from);
+    void handle_connect(const Bytes& peer, const Bytes& payload);
+
+    // Per-peer hole-punch state.
+    struct Probe {
+        Bytes peer;
+        net::Endpoint candidate;
+        bool confirmed = false;
+        int attempts = 0;
+        std::chrono::steady_clock::time_point last;
+    };
 
     Bytes local_public_;
     Bytes local_secret_;
     net::UdpSocket socket_;
     storage::Store contacts_;
+    std::optional<net::Endpoint> relay_;
 
     MessageHandler message_handler_;
     ContactRequestHandler request_handler_;
@@ -109,6 +142,7 @@ private:
     // Keyed by hex(remote public key).
     std::unordered_map<std::string, Session> sessions_;
     std::unordered_map<std::string, net::Endpoint> endpoints_;
+    std::unordered_map<std::string, Probe> probes_;
     std::unordered_set<std::string> incoming_requests_; // awaiting our decision
     std::unordered_set<std::string> outgoing_requests_; // awaiting their response
 };

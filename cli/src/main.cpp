@@ -26,6 +26,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 using openmesh::crypto::Identity;
@@ -137,8 +138,10 @@ public:
                               : "Registration failed (server reachable?). Retry with /register.\n");
         }
         if (relay_) {
+            engine_.set_relay(*relay_);
             engine_.announce_to(*relay_);
-            std::cout << "Using relay " << relay_->to_string() << ".\n";
+            std::cout << "Using relay " << relay_->to_string()
+                      << (sig_ ? " (fallback; direct preferred)" : "") << ".\n";
         }
         std::cout << "You are online.\n";
         print_help();
@@ -159,6 +162,8 @@ public:
                 break;
             }
             engine_.poll(/*timeout_ms=*/50);
+            engine_.tick(); // drive hole-punch probing
+            report_direct_paths();
             const auto now = std::chrono::steady_clock::now();
             if (sig_ && now - last_heartbeat > std::chrono::seconds(30)) {
                 sig_->heartbeat();
@@ -167,6 +172,17 @@ public:
             if (relay_ && now - last_announce > std::chrono::seconds(20)) {
                 engine_.announce_to(*relay_); // keep the relay route + NAT mapping fresh
                 last_announce = now;
+            }
+        }
+    }
+
+    // Print a one-time note when a direct (hole-punched) path comes up.
+    void report_direct_paths() {
+        for (const auto& [name, pk] : name_to_pk_) {
+            const std::string key = hex(pk);
+            if (engine_.has_direct_path(pk) && direct_announced_.insert(key).second) {
+                std::cout << "\n* direct connection to " << name << " established (no relay)\n> "
+                          << std::flush;
             }
         }
     }
@@ -270,29 +286,38 @@ private:
         pk_to_name_[hex(*pk)] = name;
         current_ = *pk;
 
-        // In relay mode there's no address to look up: the relay routes by
-        // destination public key, so send the request straight to the relay.
-        if (relay_) {
-            if (engine_.send_contact_request(*pk, *relay_, to_bytes(display_name_))) {
-                std::cout << "Request sent via relay. Waiting for " << name << " to accept.\n";
+        // With signaling: discover the peer's public endpoint, start a hole punch
+        // toward it (falling back to the relay if configured), and tell the peer
+        // to punch back via a CONNECT.
+        if (sig_) {
+            std::cout << "Looking up " << name << "...\n";
+            auto found = sig_->discover(*pk);
+            if (!found.endpoint) {
+                std::cout << (found.responded ? "Peer is offline (not registered).\n"
+                                              : "No response from the signaling server.\n");
+                return;
+            }
+            std::cout << "Found at " << found.endpoint->to_string() << ".\n";
+            const auto active = engine_.connect(*pk, *found.endpoint);
+            if (auto mine = sig_->public_endpoint()) {
+                sig_->send_connect(*pk, to_bytes(mine->to_string())); // ask peer to probe us
+            }
+            if (engine_.send_contact_request(*pk, active, to_bytes(display_name_))) {
+                std::cout << "Request sent" << (relay_ ? " (via relay; trying direct)" : "")
+                          << ". Waiting for " << name << " to accept.\n";
             } else {
                 std::cout << "Could not send the request.\n";
             }
             return;
         }
 
-        std::cout << "Looking up " << name << "...\n";
-        auto found = sig_->discover(*pk);
-        if (!found.endpoint) {
-            std::cout << (found.responded ? "Peer is offline (not registered).\n"
-                                          : "No response from the signaling server.\n");
-            return;
-        }
-        std::cout << "Found at " << found.endpoint->to_string() << ". Sending contact request...\n";
-        if (engine_.send_contact_request(*pk, *found.endpoint, to_bytes(display_name_))) {
-            std::cout << "Request sent. Waiting for " << name << " to accept.\n";
-        } else {
-            std::cout << "Could not send the request.\n";
+        // Relay-only: the relay routes by destination public key, no lookup needed.
+        if (relay_) {
+            if (engine_.send_contact_request(*pk, *relay_, to_bytes(display_name_))) {
+                std::cout << "Request sent via relay. Waiting for " << name << " to accept.\n";
+            } else {
+                std::cout << "Could not send the request.\n";
+            }
         }
     }
 
@@ -376,6 +401,7 @@ private:
     // All CLI state below is owned by the network thread only.
     std::unordered_map<std::string, Bytes> name_to_pk_;
     std::unordered_map<std::string, std::string> pk_to_name_;
+    std::unordered_set<std::string> direct_announced_;
     Bytes current_;
 };
 
