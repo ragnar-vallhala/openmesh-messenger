@@ -291,6 +291,7 @@ private:
         if (selected_ < 0)
             selected_ = 0;
 
+        flash_view_ = flash_; // copy command feedback out under the lock
         conv_.clear();
         status_.clear();
         if (selected_ >= 0 && selected_ < static_cast<int>(items_.size())) {
@@ -359,7 +360,7 @@ private:
         int sw = std::min(30, cols / 3);
         if (sw < 18)
             sw = std::min(18, cols);
-        const int top = 1, bottom = rows - 3; // content region [top, bottom]
+        const int top = 1, bottom = rows - 4; // content region; rows-3 is the message line
 
         // Status bar.
         attron(COLOR_PAIR(CP_SELECTED));
@@ -404,6 +405,14 @@ private:
 
         // Conversation pane.
         draw_conversation(top, bottom, sw + 2, cols - (sw + 2));
+
+        // Message/feedback line (shows /id output, "request sent", errors, …).
+        if (!flash_view_.empty()) {
+            attron(COLOR_PAIR(CP_ACCENT) | A_BOLD);
+            mvhline(rows - 3, 0, ' ', cols);
+            mvaddstr(rows - 3, 0, clip(" " + flash_view_, cols).c_str());
+            attroff(COLOR_PAIR(CP_ACCENT) | A_BOLD);
+        }
 
         // Input line.
         std::string prompt = "> " + input_;
@@ -571,7 +580,8 @@ private:
     std::string input_;
     std::vector<Line> conv_;
     std::string status_;
-    std::string flash_;
+    std::string flash_;      // set by the network thread (under mtx_)
+    std::string flash_view_; // UI-thread copy for rendering
 };
 
 } // namespace
